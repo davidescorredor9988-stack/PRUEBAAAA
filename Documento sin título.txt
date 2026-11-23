@@ -1,0 +1,712 @@
+﻿<!DOCTYPE html>
+<html lang="es">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <title>Simulación YOLOv8n + QoS en Red</title>
+  <style>
+    :root {
+      --bg-page: #ffffff;
+      --bg-card: #eaedeb;
+      --bg-badge: #ffffff;
+      --text-main: #2a2d2b;
+      --text-muted: #5a605d;
+      --accent-teal: #177867;
+      --accent-orange: #c9680c;
+      --accent-red: #b82921;
+      --node-border: #177867;
+      --road-color: #d2d6d4;
+      --silhouette: #525c58;
+    }
+
+
+    * {
+      box-sizing: border-box;
+      margin: 0;
+      padding: 0;
+    }
+
+
+    body {
+      font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, Helvetica, Arial, sans-serif;
+      background-color: var(--bg-page);
+      color: var(--text-main);
+      padding: 16px;
+      display: flex;
+      justify-content: center;
+    }
+
+
+    .container {
+      width: 100%;
+      max-width: 960px;
+      display: flex;
+      flex-direction: column;
+      gap: 12px;
+    }
+
+
+    .card {
+      background-color: var(--bg-card);
+      border-radius: 12px;
+      padding: 16px 20px;
+    }
+
+
+    /* Panel de controles */
+    .controls-grid {
+      display: flex;
+      flex-wrap: wrap;
+      gap: 20px 24px;
+      align-items: flex-end;
+    }
+
+
+    .control-group {
+      display: flex;
+      flex-direction: column;
+      gap: 6px;
+    }
+
+
+    .control-group label {
+      font-size: 13px;
+      font-weight: 600;
+      color: var(--text-main);
+    }
+
+
+    select {
+      appearance: none;
+      background-color: #ffffff;
+      border: 1px solid #d0d5d2;
+      border-radius: 8px;
+      padding: 8px 32px 8px 12px;
+      font-size: 14px;
+      font-weight: 500;
+      color: var(--text-main);
+      cursor: pointer;
+      background-image: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='12' height='12' viewBox='0 0 24 24' fill='none' stroke='%232a2d2b' stroke-width='2.5' stroke-linecap='round' stroke-linejoin='round'%3E%3Cpolyline points='6 9 12 15 18 9'%3E%3C/polyline%3E%3C/svg%3E");
+      background-repeat: no-repeat;
+      background-position: right 10px center;
+      min-width: 110px;
+    }
+
+
+    select:focus {
+      outline: 2px solid var(--accent-teal);
+    }
+
+
+    /* Slider */
+    .slider-group {
+      min-width: 210px;
+      flex: 1;
+      max-width: 260px;
+    }
+
+
+    input[type="range"] {
+      -webkit-appearance: none;
+      width: 100%;
+      height: 8px;
+      border-radius: 5px;
+      background: linear-gradient(to right, var(--accent-teal) 0%, var(--accent-teal) 40%, #ffffff 40%, #ffffff 100%);
+      border: 1px solid #cfd4d1;
+      outline: none;
+      margin: 10px 0;
+      cursor: pointer;
+    }
+
+
+    input[type="range"]::-webkit-slider-thumb {
+      -webkit-appearance: none;
+      appearance: none;
+      width: 18px;
+      height: 18px;
+      border-radius: 50%;
+      background: var(--accent-teal);
+      cursor: pointer;
+      box-shadow: 0 1px 3px rgba(0, 0, 0, 0.25);
+    }
+
+
+    /* Cámaras */
+    .cameras-row {
+      display: grid;
+      grid-template-columns: 1fr 1fr;
+      gap: 12px;
+    }
+
+
+    @media (max-width: 720px) {
+      .cameras-row {
+        grid-template-columns: 1fr;
+      }
+    }
+
+
+    .section-title {
+      font-family: ui-monospace, SFMono-Regular, Menlo, Monaco, Consolas, monospace;
+      font-size: 13px;
+      letter-spacing: 1px;
+      color: var(--text-muted);
+      margin-bottom: 12px;
+      text-transform: uppercase;
+    }
+
+
+    .viewport-wrapper {
+      position: relative;
+      width: 100%;
+      height: 220px;
+      background-color: var(--bg-card);
+      overflow: hidden;
+      border-radius: 6px;
+    }
+
+
+    canvas {
+      display: block;
+      width: 100%;
+      height: 100%;
+    }
+
+
+    .hud-top {
+      position: absolute;
+      top: 0;
+      left: 0;
+      right: 0;
+      display: flex;
+      justify-content: space-between;
+      align-items: center;
+      pointer-events: none;
+    }
+
+
+    .badge-box {
+      background-color: var(--bg-badge);
+      padding: 4px 12px;
+      font-family: ui-monospace, SFMono-Regular, Menlo, Monaco, Consolas, monospace;
+      font-size: 12px;
+      font-weight: 600;
+      color: var(--text-main);
+      border-radius: 2px;
+      box-shadow: 0 1px 2px rgba(0, 0, 0, 0.04);
+    }
+
+
+    .badge-delay {
+      min-width: 140px;
+      text-align: center;
+    }
+
+
+    .live-indicator {
+      display: flex;
+      align-items: center;
+      gap: 6px;
+      font-family: ui-monospace, SFMono-Regular, Menlo, Monaco, Consolas, monospace;
+      font-size: 11px;
+      font-weight: 600;
+      color: var(--text-muted);
+      padding-right: 6px;
+    }
+
+
+    .live-dot {
+      width: 9px;
+      height: 9px;
+      border-radius: 50%;
+      background-color: var(--accent-red);
+      animation: pulse 1.4s infinite;
+    }
+
+
+    @keyframes pulse {
+      0%, 100% { opacity: 1; }
+      50% { opacity: 0.35; }
+    }
+
+
+    /* Topología de red */
+    .network-wrapper {
+      position: relative;
+      width: 100%;
+      height: 115px;
+    }
+
+
+    .network-footer {
+      display: flex;
+      flex-wrap: wrap;
+      justify-content: space-between;
+      align-items: center;
+      gap: 12px;
+      margin-top: 8px;
+      font-size: 12px;
+      color: var(--text-muted);
+    }
+
+
+    .legend {
+      display: flex;
+      flex-wrap: wrap;
+      gap: 18px;
+      align-items: center;
+    }
+
+
+    .legend-item {
+      display: flex;
+      align-items: center;
+      gap: 6px;
+    }
+
+
+    .dot {
+      width: 9px;
+      height: 9px;
+      border-radius: 50%;
+      display: inline-block;
+    }
+
+
+    .queue-stat {
+      font-family: ui-monospace, SFMono-Regular, Menlo, Monaco, Consolas, monospace;
+      font-size: 12px;
+      font-weight: 500;
+    }
+
+
+    .stats-bar {
+      font-family: ui-monospace, SFMono-Regular, Menlo, Monaco, Consolas, monospace;
+      font-size: 11px;
+      color: var(--text-muted);
+      display: flex;
+      gap: 16px;
+      flex-wrap: wrap;
+      margin-top: 4px;
+    }
+  </style>
+</head>
+<body>
+  <div class="container">
+    <!-- CONTROLES SUPERIORES -->
+    <div class="card">
+      <div class="controls-grid">
+        <div class="control-group">
+          <label for="resolution">Resolución</label>
+          <select id="resolution">
+            <option value="640x480">640×480</option>
+            <option value="1280x720" selected>1280×720</option>
+            <option value="1920x1080">1920×1080</option>
+            <option value="3840x2160">3840×2160</option>
+          </select>
+        </div>
+
+
+        <div class="control-group">
+          <label for="fps">FPS</label>
+          <select id="fps">
+            <option value="15">15</option>
+            <option value="30" selected>30</option>
+            <option value="60">60</option>
+          </select>
+        </div>
+
+
+        <div class="control-group">
+          <label for="codec">Códec</label>
+          <select id="codec">
+            <option value="H.265">H.265 (HEVC)</option>
+            <option value="H.264" selected>H.264</option>
+            <option value="MJPEG">MJPEG</option>
+          </select>
+        </div>
+
+
+        <div class="control-group">
+          <label for="qos">QoS para video</label>
+          <select id="qos">
+            <option value="BEST_EFFORT">Best Effort (0)</option>
+            <option value="AF41" selected>DSCP AF41</option>
+            <option value="EF">DSCP EF (46)</option>
+          </select>
+        </div>
+
+
+        <div class="control-group slider-group">
+          <label for="otherTraffic">Tráfico de otros equipos: <span id="otherTrafficVal">40</span> %</label>
+          <input type="range" id="otherTraffic" min="0" max="100" value="40" />
+        </div>
+
+
+        <div class="control-group">
+          <label for="routerLink">Enlace router</label>
+          <select id="routerLink">
+            <option value="5">5 Mbps</option>
+            <option value="10">10 Mbps</option>
+            <option value="20" selected>20 Mbps</option>
+            <option value="50">50 Mbps</option>
+            <option value="100">100 Mbps</option>
+          </select>
+        </div>
+      </div>
+      <div class="stats-bar" id="bitrateReadout"></div>
+    </div>
+
+
+    <!-- CÁMARAS -->
+    <div class="cameras-row">
+      <!-- 1-5 CÁMARA + YOLOV8N -->
+      <div class="card">
+        <div class="section-title">1–5 · CÁMARA + YOLOV8N</div>
+        <div class="viewport-wrapper">
+          <canvas id="camCanvas"></canvas>
+          <div class="hud-top">
+            <div class="badge-box" id="camPersons">personas: 2</div>
+            <div class="live-indicator">
+              EN VIVO <span class="live-dot"></span>
+            </div>
+          </div>
+        </div>
+      </div>
+
+
+      <!-- 9 LO QUE VE EL CLIENTE -->
+      <div class="card">
+        <div class="section-title">9 · LO QUE VE EL CLIENTE</div>
+        <div class="viewport-wrapper">
+          <canvas id="clientCanvas"></canvas>
+          <div class="hud-top">
+            <div class="badge-box" id="clientPersons">personas: 2</div>
+            <div class="badge-box badge-delay" id="clientDelay">retardo 112 ms</div>
+          </div>
+        </div>
+      </div>
+    </div>
+
+
+    <!-- 6-8 RED: SERVIDOR -> SWITCH -> ROUTER -> CLIENTE -->
+    <div class="card">
+      <div class="section-title">6–8 · RED: SERVIDOR → SWITCH → ROUTER → CLIENTE</div>
+      <div class="network-wrapper">
+        <canvas id="netCanvas"></canvas>
+      </div>
+      <div class="network-footer">
+        <div class="legend">
+          <div class="legend-item">
+            <span class="dot" style="background-color: #c9680c;"></span>
+            <span>paquete de video</span>
+          </div>
+          <div class="legend-item">
+            <span class="dot" style="background-color: #4f5754;"></span>
+            <span>otro tráfico</span>
+          </div>
+          <div class="legend-item">
+            <span class="dot" style="background-color: #b82921;"></span>
+            <span>descartado en la cola del router</span>
+          </div>
+        </div>
+        <div class="queue-stat" id="routerQueue">cola del router: 0 ms</div>
+      </div>
+    </div>
+  </div>
+
+
+  <script>
+    // --- REFERENCIAS DOM ---
+    const resEl = document.getElementById("resolution");
+    const fpsEl = document.getElementById("fps");
+    const codecEl = document.getElementById("codec");
+    const qosEl = document.getElementById("qos");
+    const trafficEl = document.getElementById("otherTraffic");
+    const trafficValEl = document.getElementById("otherTrafficVal");
+    const linkEl = document.getElementById("routerLink");
+    const bitrateReadoutEl = document.getElementById("bitrateReadout");
+
+
+    const camPersonsEl = document.getElementById("camPersons");
+    const clientPersonsEl = document.getElementById("clientPersons");
+    const clientDelayEl = document.getElementById("clientDelay");
+    const routerQueueEl = document.getElementById("routerQueue");
+
+
+    const camCanvas = document.getElementById("camCanvas");
+    const clientCanvas = document.getElementById("clientCanvas");
+    const netCanvas = document.getElementById("netCanvas");
+
+
+    const camCtx = camCanvas.getContext("2d");
+    const clientCtx = clientCanvas.getContext("2d");
+    const netCtx = netCanvas.getContext("2d");
+
+
+    // --- ESTADO DE LA SIMULACIÓN ---
+    const state = {
+      res: "1280x720",
+      fps: 30,
+      codec: "H.264",
+      qos: "AF41",
+      otherTrafficPct: 40,
+      linkMbps: 20,
+      videoBitrateMbps: 4.5,
+      otherBitrateMbps: 8.0,
+      queueMs: 0,
+      totalDelayMs: 112,
+      videoLossRate: 0,
+      otherLossRate: 0
+    };
+
+
+    // Entidades de la escena
+    const entities = [
+      { id: 1, type: "persona", x: 185, speed: 18, baseConf: 0.83 },
+      { id: 2, type: "perro",   x: 245, speed: 24, baseConf: 0.94 },
+      { id: 3, type: "persona", x: 350, speed: 18, baseConf: 0.81 },
+      { id: 4, type: "auto",    x: 375, speed: 32, baseConf: 0.89 }
+    ];
+
+
+    // Buffer de historial para simular el retardo real en el cliente
+    const frameHistory = [];
+
+
+    // Partículas de red y partículas descartadas
+    const packets = [];
+    const droppedParticles = [];
+    let spawnAccumulatorVideo = 0;
+    let spawnAccumulatorOther = 0;
+
+
+    // --- CÁLCULO DE MÉTRICAS DE RED Y QOS ---
+    function updateNetworkMetrics() {
+      state.res = resEl.value;
+      state.fps = parseInt(fpsEl.value, 10);
+      state.codec = codecEl.value;
+      state.qos = qosEl.value;
+      state.otherTrafficPct = parseInt(trafficEl.value, 10);
+      state.linkMbps = parseInt(linkEl.value, 10);
+
+
+      trafficValEl.textContent = state.otherTrafficPct;
+      trafficEl.style.background = `linear-gradient(to right, #177867 0%, #177867 ${state.otherTrafficPct}%, #ffffff ${state.otherTrafficPct}%, #ffffff 100%)`;
+
+
+      const resFactor = {
+        "640x480": 1.2,
+        "1280x720": 3.0,
+        "1920x1080": 6.5,
+        "3840x2160": 18.0
+      }[state.res];
+
+
+      const fpsFactor = state.fps / 30;
+      const codecFactor = {
+        "H.265": 0.65,
+        "H.264": 1.0,
+        "MJPEG": 3.4
+      }[state.codec];
+
+
+      state.videoBitrateMbps = +(resFactor * fpsFactor * codecFactor).toFixed(2);
+      state.otherBitrateMbps = +((state.otherTrafficPct / 100) * state.linkMbps * 0.95).toFixed(2);
+
+
+      const totalDemand = state.videoBitrateMbps + state.otherBitrateMbps;
+      const utilization = totalDemand / state.linkMbps;
+
+
+      // Retardo base (inferencia YOLOv8n ~35ms + codificación + propagación red ~70ms)
+      const baseProcessingDelay = 95 + (state.res === "3840x2160" ? 28 : state.res === "1920x1080" ? 12 : 5);
+
+
+      if (utilization <= 0.85) {
+        state.queueMs = 0;
+        state.videoLossRate = 0;
+        state.otherLossRate = 0;
+      } else {
+        const overload = utilization - 0.85;
+        if (state.qos === "EF") {
+          // Prioridad estricta LLQ: el video casi no sufre cola ni pérdida
+          state.queueMs = Math.min(25, Math.round(overload * 35));
+          state.videoLossRate = utilization > 1.35 ? Math.min(0.15, (utilization - 1.35) * 0.3) : 0;
+          state.otherLossRate = Math.min(0.85, overload * 1.1);
+        } else if (state.qos === "AF41") {
+          // Cola reservada CBWFQ: protege el video moderadamente
+          state.queueMs = Math.min(180, Math.round(overload * 190));
+          state.videoLossRate = utilization > 1.05 ? Math.min(0.45, (utilization - 1.05) * 0.7) : 0;
+          state.otherLossRate = Math.min(0.75, overload * 0.95);
+        } else {
+          // Best Effort (FIFO): video y datos compiten por igual
+          state.queueMs = Math.min(450, Math.round(overload * 420));
+          state.videoLossRate = utilization > 0.95 ? Math.min(0.7, (utilization - 0.95) * 0.9) : 0;
+          state.otherLossRate = state.videoLossRate;
+        }
+      }
+
+
+      state.totalDelayMs = baseProcessingDelay + state.queueMs;
+
+
+      routerQueueEl.textContent = `cola del router: ${state.queueMs} ms`;
+      routerQueueEl.style.color = state.queueMs > 80 ? "#b82921" : "#5a605d";
+
+
+      bitrateReadoutEl.innerHTML = `
+        <span>Flujo video: <strong>${state.videoBitrateMbps} Mbps</strong></span>
+        <span>Otro tráfico: <strong>${state.otherBitrateMbps} Mbps</strong></span>
+        <span>Uso enlace: <strong>${Math.round(utilization * 100)}%</strong></span>
+        <span>Pérdida video: <strong>${Math.round(state.videoLossRate * 100)}%</strong></span>
+      `;
+    }
+
+
+    [resEl, fpsEl, codecEl, qosEl, trafficEl, linkEl].forEach(el => {
+      el.addEventListener("input", updateNetworkMetrics);
+      el.addEventListener("change", updateNetworkMetrics);
+    });
+
+
+    // --- RESPONSIVE CANVAS ---
+    function resizeCanvases() {
+      [camCanvas, clientCanvas, netCanvas].forEach(c => {
+        const rect = c.parentElement.getBoundingClientRect();
+        const dpr = window.devicePixelRatio || 1;
+        c.width = rect.width * dpr;
+        c.height = rect.height * dpr;
+        const ctx = c.getContext("2d");
+        ctx.setTransform(dpr, 0, 0, dpr, 0, 0);
+      });
+    }
+    window.addEventListener("resize", resizeCanvases);
+
+
+    // --- DIBUJO DE ESCENA Y DETECCIONES YOLO ---
+    function drawScene(ctx, width, height, snapshot, isClient) {
+      ctx.clearRect(0, 0, width, height);
+
+
+      const roadY = height - 34;
+      // Carretera
+      ctx.fillStyle = "#d2d6d4";
+      ctx.fillRect(0, roadY, width, 34);
+
+
+      // Línea discontinua
+      ctx.strokeStyle = "#5d6562";
+      ctx.lineWidth = 2;
+      ctx.setLineDash([12, 10]);
+      ctx.beginPath();
+      ctx.moveTo(0, roadY + 17);
+      ctx.lineTo(width, roadY + 17);
+      ctx.stroke();
+      ctx.setLineDash([]);
+
+
+      let visiblePersons = 0;
+      const scaleX = width / 420;
+
+
+      snapshot.forEach(item => {
+        const drawX = item.x * scaleX;
+        if (drawX < -50 || drawX > width + 30) return;
+
+
+        if (item.type === "persona" && drawX > 0 && drawX < width - 5) {
+          visiblePersons++;
+        }
+
+
+        // Si el cliente tiene pérdida alta de paquetes, ocasionalmente omite caja o muestra artefacto
+        const packetDroppedFrame = isClient && snapshot.dropped;
+
+
+        ctx.fillStyle = "#525c58";
+        let boxX, boxY, boxW, boxH;
+
+
+        if (item.type === "persona") {
+          const headR = 7.5;
+          const bodyW = 16;
+          const bodyH = 44;
+          const baseY = roadY - 2;
+          const headY = baseY - bodyH - headR - 3;
+
+
+          // Cabeza
+          ctx.beginPath();
+          ctx.arc(drawX + bodyW / 2, headY, headR, 0, Math.PI * 2);
+          ctx.fill();
+
+
+          // Cuerpo
+          roundRect(ctx, drawX, baseY - bodyH, bodyW, bodyH, 3);
+          ctx.fill();
+
+
+          boxX = drawX - 6;
+          boxY = headY - headR - 4;
+          boxW = bodyW + 12;
+          boxH = baseY - boxY + 2;
+        } else if (item.type === "perro") {
+          const baseY = roadY + 10;
+          const bodyW = 28;
+          const bodyH = 12;
+
+
+          // Cuerpo ovalado
+          ctx.beginPath();
+          ctx.ellipse(drawX + bodyW / 2, baseY - bodyH / 2, bodyW / 2, bodyH / 2, 0, 0, Math.PI * 2);
+          ctx.fill();
+
+
+          // Cabeza del perro
+          ctx.beginPath();
+          ctx.arc(drawX + bodyW - 3, baseY - bodyH - 2, 4.5, 0, Math.PI * 2);
+          ctx.fill();
+
+
+          boxX = drawX - 3;
+          boxY = baseY - bodyH - 8;
+          boxW = bodyW + 8;
+          boxH = bodyH + 10;
+        } else if (item.type === "auto") {
+          const baseY = roadY + 8;
+          const carW = 54;
+          const carH = 26;
+
+
+          // Chasis
+          roundRect(ctx, drawX, baseY - carH, carW, carH - 4, 5);
+          ctx.fill();
+          // Cabina superior
+          roundRect(ctx, drawX + 10, baseY - carH - 13, carW - 16, 15, 4);
+          ctx.fill();
+          // Rueda
+          ctx.fillStyle = "#363d3a";
+          ctx.beginPath();
+          ctx.arc(drawX + 14, baseY - 3, 6, 0, Math.PI * 2);
+          ctx.arc(drawX + carW - 14, baseY - 3, 6, 0, Math.PI * 2);
+          ctx.fill();
+
+
+          boxX = drawX - 3;
+          boxY = baseY - carH - 15;
+          boxW = carW + 6;
+          boxH = carH + 17;
+        }
+
+
+        // Dibujar Bounding Box YOLOv8n
+        if (!packetDroppedFrame) {
+          ctx.strokeStyle = "#c9680c";
+          ctx.lineWidth = 2;
+          ctx.strokeRect(boxX, boxY, boxW, boxH);
+
+
+          const label = `${item.type} ${item.conf.toFixed(2)}`;
+          ctx.font = "bold 11px ui-monospace, SFMono-Regular, Menlo, monospace";
+          const textW = ctx.measureText(label).width;
